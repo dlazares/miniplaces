@@ -68,6 +68,7 @@ class DataLoaderH5(object):
 # Loading data from disk
 class DataLoaderDisk(object):
     def __init__(self, **kwargs):
+        print("kwargs: ",kwargs)
 
         self.load_size = int(kwargs['load_size'])
         self.fine_size = int(kwargs['fine_size'])
@@ -83,10 +84,12 @@ class DataLoaderDisk(object):
                 path, lab =line.rstrip().split(' ')
                 self.list_im.append(os.path.join(self.data_root, path))
                 self.list_lab.append(int(lab))
+        
         self.list_im = np.array(self.list_im, np.object)
         self.list_lab = np.array(self.list_lab, np.int64)
         self.num = self.list_im.shape[0]
-        print('# Images found:'), self.num
+        
+        print('# Images found:', self.num)
 
         # permutation
         perm = np.random.permutation(self.num) 
@@ -112,6 +115,10 @@ class DataLoaderDisk(object):
             else:
                 offset_h = (self.load_size-self.fine_size)/2
                 offset_w = (self.load_size-self.fine_size)/2
+
+            offset_h = int(offset_h)
+            offset_w = int(offset_w)    
+            # print("offsets",offset_h,self.fine_size,offset_w)
 
             images_batch[i, ...] =  image[offset_h:offset_h+self.fine_size, offset_w:offset_w+self.fine_size, :]
             labels_batch[i, ...] = self.list_lab[self._idx]

@@ -4,6 +4,8 @@
 *.tar.gz
 data/images
 data/objects
+.DS_Store
+
 *.h5
 
 # tf checkpoints
