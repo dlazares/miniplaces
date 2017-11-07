@@ -38,10 +38,9 @@ def loadMiniplaces(train_data_list, val_data_list, images_root, num_train=100, n
         image = scipy.misc.imresize(image, (size[0], size[1]))
         # print(image.shape)
         
-        image = image.astype(np.float32)/255.
-        
-        np.append(X_Train,image)
-        np.append(Y_Train,train_im[i][1])
+        # image = image.astype(np.float32)/255.
+        X_Train[i] = image.reshape(-1,28,28,1)
+        Y_Train[i] = train_im[i][1]
 
     X_Test = np.zeros((num_val, size[0], size[1], 1)) 
     Y_Test = np.zeros(num_val)
@@ -50,9 +49,11 @@ def loadMiniplaces(train_data_list, val_data_list, images_root, num_train=100, n
         image = scipy.misc.imresize(image, (size[0], size[1]))
         # plt.imshow(np.uint8(image))
         # plt.show()
-        image = image.astype(np.float32)/255.
-        np.append(X_Test,image)
-        np.append(Y_Test,val_im[i][1])
+        # image = image.astype(np.float32)/255.
+        # np.append(X_Test,image)
+        # np.append(Y_Test,val_im[i][1])
+        X_Test[i] = image.reshape(-1,28,28,1)
+        Y_Train[i] = val_im[i][1]
 
     print(X_Train.shape)
     print(Y_Train.shape)
@@ -61,7 +62,7 @@ def loadMiniplaces(train_data_list, val_data_list, images_root, num_train=100, n
 
     return (X_Test, Y_Test, X_Train, Y_Train)
 
-train_data_list = '../../../data/train.txt'
-val_data_list = '../../../data/val.txt'
-images_root = '../../../data/images/'
-loadMiniplaces(train_data_list, val_data_list, images_root)
+# train_data_list = '../../../data/train.txt'
+# val_data_list = '../../../data/val.txt'
+# images_root = '../../../data/images/'
+# loadMiniplaces(train_data_list, val_data_list, images_root)

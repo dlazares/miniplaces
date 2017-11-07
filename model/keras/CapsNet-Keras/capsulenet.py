@@ -152,7 +152,7 @@ def load_mnist():
     # the data, shuffled and split between train and test sets
     from keras.datasets import mnist
     (x_train, y_train), (x_test, y_test) = mnist.load_data()
-
+    # print("MNIST",x_test[0])
     x_train = x_train.reshape(-1, 28, 28, 1).astype('float32') / 255.
     x_test = x_test.reshape(-1, 28, 28, 1).astype('float32') / 255.
     y_train = to_categorical(y_train.astype('float32'))
@@ -164,11 +164,13 @@ def load_miniplaces_data():
     train_data_list = '../../../data/train.txt'
     val_data_list = '../../../data/val.txt'
     images_root = '../../../data/images/'
-    (X_Test, Y_Test, X_Train, Y_Train) = loadMiniplaces(train_data_list, val_data_list, images_root)
-
-    Y_Train = to_categorical(Y_Train.astype('float32'),num_classes=100)
-    Y_Test = to_categorical(Y_Test.astype('float32'),num_classes=100)
-    return (X_Test, Y_Test, X_Train, Y_Train)
+    (x_test, y_test, x_train, y_train) = loadMiniplaces(train_data_list, val_data_list, images_root)
+    # print("Miniplaces",X_Test[0])
+    x_train = x_train.reshape(-1, 28, 28, 1).astype('float32') / 255.
+    x_test = x_test.reshape(-1, 28, 28, 1).astype('float32') / 255.
+    y_train = to_categorical(y_train.astype('float32'),num_classes=100)
+    y_test = to_categorical(y_test.astype('float32'),num_classes=100)
+    return (x_test, y_test,x_train, y_train)
     
 
 
