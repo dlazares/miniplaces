@@ -166,8 +166,10 @@ def load_miniplaces_data():
     images_root = '../../../data/images/'
     (x_test, y_test, x_train, y_train) = loadMiniplaces(train_data_list, val_data_list, images_root)
     # print("Miniplaces",X_Test[0])
-    x_train = x_train.reshape(-1, 28, 28, 1).astype('float32') / 255.
-    x_test = x_test.reshape(-1, 28, 28, 1).astype('float32') / 255.
+    print(x_train.shape)
+    print(x_train[0])
+    x_train = x_train.reshape(-1, 28, 28, 3).astype('float32') / 255.
+    x_test = x_test.reshape(-1, 28, 28, 3).astype('float32') / 255.
     y_train = to_categorical(y_train.astype('float32'),num_classes=100)
     y_test = to_categorical(y_test.astype('float32'),num_classes=100)
     return (x_test, y_test,x_train, y_train)
@@ -208,7 +210,7 @@ if __name__ == "__main__":
     # model = CapsNet(input_shape=[28, 28, 1],
     #                 n_class=len(np.unique(np.argmax(y_train, 1))),
     #                 num_routing=args.num_routing)
-    model = CapsNet(input_shape=[28, 28, 1],
+    model = CapsNet(input_shape=[28, 28, 3],
                     n_class=100,
                     num_routing=args.num_routing)
     model.summary()

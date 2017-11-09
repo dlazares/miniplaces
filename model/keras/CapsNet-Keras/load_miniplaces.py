@@ -31,30 +31,37 @@ def loadMiniplaces(train_data_list, val_data_list, images_root, num_train=100, n
     random.shuffle(val_im)
     val_im = val_im[:num_val + 1]
 
-    X_Train = np.zeros((num_train, size[0], size[1], 1)) 
+    X_Train = np.zeros((num_train, size[0], size[1], 3)) 
     Y_Train = np.zeros(num_train)
     for i in range(min(num_train,len(train_im))):
-        image = scipy.misc.imread(train_im[i][0],mode="L")
-        image = scipy.misc.imresize(image, (size[0], size[1]))
+        # image = scipy.misc.imread(train_im[i][0],mode="L")
+        image = scipy.misc.imread(train_im[i][0])
+        image = scipy.misc.imresize(image, (size[0], size[1],3))
         # print(image.shape)
-        
+        # print(image)
+        # plt.imshow(np.uint8(image))
+        # plt.show()
         # image = image.astype(np.float32)/255.
-        X_Train[i] = image.reshape(-1,28,28,1)
+        X_Train[i] = image.reshape(-1,28,28,3)
         Y_Train[i] = train_im[i][1]
 
-    X_Test = np.zeros((num_val, size[0], size[1], 1)) 
+    X_Test = np.zeros((num_val, size[0], size[1], 3)) 
     Y_Test = np.zeros(num_val)
     for i in range(min(num_val,len(val_im))):
-        image = scipy.misc.imread(val_im[i][0],mode="L")
-        image = scipy.misc.imresize(image, (size[0], size[1]))
+        image = scipy.misc.imread(val_im[i][0])
+        image = scipy.misc.imresize(image, (size[0], size[1],3))
         # plt.imshow(np.uint8(image))
         # plt.show()
         # image = image.astype(np.float32)/255.
         # np.append(X_Test,image)
         # np.append(Y_Test,val_im[i][1])
-        X_Test[i] = image.reshape(-1,28,28,1)
+        X_Test[i] = image.reshape(-1,28,28,3)
         Y_Train[i] = val_im[i][1]
 
+    # print(X_Train[0].shape)
+    # print(X_Train[0])
+    # plt.imshow(np.uint8(X_Train[0]))
+    # plt.show()
     print(X_Train.shape)
     print(Y_Train.shape)
     print(X_Test.shape)
