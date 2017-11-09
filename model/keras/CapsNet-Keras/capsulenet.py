@@ -130,22 +130,26 @@ def train(model, data, args):
 
 def test(model, data):
     x_test, y_test = data
-    y_pred, x_recon = model.predict([x_test, y_test], batch_size=100)
+    y_pred, x_recon = model.predict([x_test, y_test], batch_size=16)
+    first = y_pred[0]
+    firstp = y_test[0]
+    print(first.shape,firstp.shape)
+    print(np.argmax(first),np.argmax(firstp),first[np.argmax(first)])
     print('-'*50)
     print('Test acc:', np.sum(np.argmax(y_pred, 1) == np.argmax(y_test, 1))/y_test.shape[0])
 
-    import matplotlib.pyplot as plt
-    from utils import combine_images
-    from PIL import Image
+    #import matplotlib.pyplot as plt
+    #from utils import combine_images
+    #from PIL import Image
 
-    img = combine_images(np.concatenate([x_test[:50],x_recon[:50]]))
-    image = img * 255
-    Image.fromarray(image.astype(np.uint8)).save("real_and_recon.png")
-    print()
-    print('Reconstructed images are saved to ./real_and_recon.png')
-    print('-'*50)
-    plt.imshow(plt.imread("real_and_recon.png", ))
-    plt.show()
+    #img = combine_images(np.concatenate([x_test[:50],x_recon[:50]]))
+    #image = img * 255
+    #Image.fromarray(image.astype(np.uint8)).save("real_and_recon.png")
+    #print()
+    #print('Reconstructed images are saved to ./real_and_recon.png')
+    #print('-'*50)
+    #plt.imshow(plt.imread("real_and_recon.png", ))
+    #plt.show()
 
 
 def load_mnist():
@@ -164,14 +168,14 @@ def load_miniplaces_data():
     train_data_list = '../../../data/train.txt'
     val_data_list = '../../../data/val.txt'
     images_root = '../../../data/images/'
-    (x_test, y_test, x_train, y_train) = loadMiniplaces(train_data_list, val_data_list, images_root)
+    (x_test, y_test, x_train, y_train) = loadMiniplaces(train_data_list, val_data_list, images_root,num_train=12000,num_val=1000)
     # print("Miniplaces",X_Test[0])
     print(x_train.shape)
     print(x_train[0])
     x_train = x_train.reshape(-1, 28, 28, 3).astype('float32') / 255.
     x_test = x_test.reshape(-1, 28, 28, 3).astype('float32') / 255.
-    y_train = to_categorical(y_train.astype('float32'),num_classes=100)
-    y_test = to_categorical(y_test.astype('float32'),num_classes=100)
+    y_train = to_categorical(y_train.astype('float32'),num_classes=10)
+    y_test = to_categorical(y_test.astype('float32'),num_classes=10)
     return (x_test, y_test,x_train, y_train)
     
 
@@ -202,17 +206,17 @@ if __name__ == "__main__":
         os.makedirs(args.save_dir)
 
     # load data
-    # (x_train, y_train), (x_test, y_test) = load_mnist()
+    #(x_train, y_train), (x_test, y_test) = load_mnist()
     # print("Shape:",x_train.shape,y_train.shape,x_test.shape,y_test.shape)
     x_test,y_test,x_train,y_train = load_miniplaces_data()
     print("Shape:",x_train.shape,y_train.shape,x_test.shape,y_test.shape)
     # define model
-    # model = CapsNet(input_shape=[28, 28, 1],
-    #                 n_class=len(np.unique(np.argmax(y_train, 1))),
-    #                 num_routing=args.num_routing)
     model = CapsNet(input_shape=[28, 28, 3],
-                    n_class=100,
-                    num_routing=args.num_routing)
+                     n_class=len(np.unique(np.argmax(y_train, 1))),
+                     num_routing=args.num_routing)
+#    model = CapsNet(input_shape=[28, 28, 3],
+#                    n_class=100,
+#                    num_routing=args.num_routing)
     model.summary()
     # plot_model(model, to_file=args.save_dir+'/model.png', show_shapes=True)
 
