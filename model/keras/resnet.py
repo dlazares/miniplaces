@@ -243,9 +243,19 @@ def trainBatch(model, args):
 def test(model, data):
     x_test, y_test = data
     y_pred= model.predict(x_test)
-
+    from keras import backend as K
+    import tensorflow as tf
+    print("y_pred shape:",y_pred.shape)
+    top_values, top_indices = K.get_session().run(tf.nn.top_k(y_pred, k=5))
+    print(top_indices.shape)
+    top5 = 0
+    y = np.argmax(y_test, 1)
+    for i in range(len(y)):
+        #print(y[i],top_indices[i],y[i] in top_indices[i])
+        if y[i] in top_indices[i]:
+            top5 += 1
+    print('Top 5 acc: ', top5/len(y),top5," out of ",len(y))
     print('Test acc:', np.sum(np.argmax(y_pred, 1) == np.argmax(y_test, 1))/y_test.shape[0])
-
 
 
 if __name__ == "__main__":
@@ -274,20 +284,20 @@ if __name__ == "__main__":
     val_data_list = '../../data/val.txt'
     images_root = '../../data/images/'
 
-    (x_test, y_test, x_train, y_train) = loadMiniplaces(train_data_list, val_data_list, images_root,num_train=1000,num_val=100,size=[100,100])
+    (x_test, y_test, x_train, y_train) = loadMiniplaces(train_data_list, val_data_list, images_root,num_train=100,num_val=10000,size=[100,100])
     x_train = x_train.reshape(-1, 100, 100, 3).astype('float32') / 255.
     x_test = x_test.reshape(-1, 100, 100, 3).astype('float32') / 255.
     y_train = to_categorical(y_train.astype('float32'),num_classes=100)
     y_test = to_categorical(y_test.astype('float32'),num_classes=100)
 
     model = resnet32()
-    model.summary()
 
     # train or test
     if args.weights is not None:  # init the model weights with provided one
         model.load_weights(args.weights)
     if args.is_training:
         # train(model=model, data=((x_train, y_train), (x_test, y_test)), args=args)
+        model.summary()
         trainBatch(model=model,args=args)
     else:  # as long as weights are given, will run testing
         if args.weights is None:

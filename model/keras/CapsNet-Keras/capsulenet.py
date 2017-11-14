@@ -159,7 +159,7 @@ def load_miniplaces_data():
     train_data_list = '../../../data/train.txt'
     val_data_list = '../../../data/val.txt'
     images_root = '../../../data/images/'
-    (x_test, y_test, x_train, y_train) = loadMiniplaces(train_data_list, val_data_list, images_root)
+    (x_test, y_test, x_train, y_train) = loadMiniplaces(train_data_list, val_data_list, images_root,num_train=10000,num_val=5000)
     # print("Miniplaces",X_Test[0])
     print(x_train.shape)
     print(x_train[0])
