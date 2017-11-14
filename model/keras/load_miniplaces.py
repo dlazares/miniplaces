@@ -63,7 +63,7 @@ def loadMiniplacesBatch(train_data_list, val_data_list, images_root, group=0,gro
             train_im.append((os.path.join(images_root, path),lab))
 
     val_im = []
-    with open(train_data_list, 'r') as f:
+    with open(val_data_list, 'r') as f:
         for line in f:
             path, lab = line.rstrip().split(' ')
             lab = int(lab) 

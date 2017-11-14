@@ -281,7 +281,7 @@ def submit(model,args,test_dir,size=[100,100]):
             for l in range(len(filenames)):
                 fn = filenames[l]
                 vals = " ".join(map(str,top_indices[l]))
-                result_file.write(fn + " "+vals+"\n")
+                result_file.write("test/"+fn + " "+vals+"\n")
 
 if __name__ == "__main__":
     
