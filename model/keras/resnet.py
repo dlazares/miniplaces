@@ -166,7 +166,7 @@ def train(model, data, args):
     #               loss_weights=[1., args.lam_recon],
     #               metrics={'out_caps': 'accuracy'})
     sgd = SGD(lr=0.01, decay=1e-6, momentum=0.9, nesterov=True)
-    model.compile(loss='categorical_crossentropy', optimizer=sgd, metrics=['mae', 'acc'])
+    model.compile(loss='categorical_crossentropy', optimizer=sgd, metrics=['mae', 'acc','top_k_categorical_accuracy'])
 
     
     # Training without data augmentation:
@@ -248,4 +248,3 @@ if __name__ == "__main__":
         else:
             print("Loading weights from ",args.weights)
         test(model=model, data=(x_test, y_test))
-

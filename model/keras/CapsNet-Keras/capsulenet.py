@@ -23,6 +23,7 @@ from capsulelayers import CapsuleLayer, PrimaryCap, Length, Mask
 
 
 
+
 def CapsNet(input_shape, n_class, num_routing):
     """
     A Capsule Network on MNIST.
@@ -47,15 +48,10 @@ def CapsNet(input_shape, n_class, num_routing):
     out_caps = Length(name='out_caps')(digitcaps)
 
     # Decoder network.
-    y = layers.Input(shape=(n_class,))
-    masked = Mask()([digitcaps, y])  # The true label is used to mask the output of capsule layer.
-    x_recon = layers.Dense(512, activation='relu')(masked)
-    x_recon = layers.Dense(1024, activation='relu')(x_recon)
-    x_recon = layers.Dense(np.prod(input_shape), activation='sigmoid')(x_recon)
-    x_recon = layers.Reshape(target_shape=input_shape, name='out_recon')(x_recon)
-
-    # two-input-two-output keras Model
-    return models.Model([x, y], [out_caps, x_recon])
+    y = layers.Dense(n_class, activation='softmax')(out_caps)
+    
+    
+    return models.Model(inputs=x,outputs=y)
 
 
 def margin_loss(y_true, y_pred):
@@ -92,9 +88,8 @@ def train(model, data, args):
 
     # compile the model
     model.compile(optimizer=optimizers.Adam(lr=args.lr),
-                  loss=[margin_loss, 'mse'],
-                  loss_weights=[1., args.lam_recon],
-                  metrics={'out_caps': 'accuracy'})
+                  loss='categorical_crossentropy',
+                  metrics=['mae', 'acc','top_k_categorical_accuracy'])
 
     """
     # Training without data augmentation:
@@ -109,13 +104,13 @@ def train(model, data, args):
         generator = train_datagen.flow(x, y, batch_size=batch_size)
         while 1:
             x_batch, y_batch = generator.next()
-            yield ([x_batch, y_batch], [y_batch, x_batch])
+            yield (x_batch, y_batch)
 
     # Training with data augmentation. If shift_fraction=0., also no augmentation.
     model.fit_generator(generator=train_generator(x_train, y_train, args.batch_size, args.shift_fraction),
                         steps_per_epoch=int(y_train.shape[0] / args.batch_size),
                         epochs=args.epochs,
-                        validation_data=[[x_test, y_test], [y_test, x_test]],
+                        validation_data=[x_test, y_test],
                         callbacks=[log, tb, checkpoint, lr_decay])
     # End: Training with data augmentation -----------------------------------------------------------------------#
 
@@ -204,6 +199,7 @@ if __name__ == "__main__":
     # load data
     # (x_train, y_train), (x_test, y_test) = load_mnist()
     # print("Shape:",x_train.shape,y_train.shape,x_test.shape,y_test.shape)
+
     x_test,y_test,x_train,y_train = load_miniplaces_data()
     print("Shape:",x_train.shape,y_train.shape,x_test.shape,y_test.shape)
     # define model
