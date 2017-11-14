@@ -2,7 +2,8 @@ import numpy as np
 import os
 import argparse
 import keras
-
+from keras import backend as K
+import tensorflow as tf
 from keras.models import Sequential, Model
 from keras import layers
 from keras.layers import Input,Dense, Dropout, Flatten
@@ -243,8 +244,7 @@ def trainBatch(model, args):
 def test(model, data):
     x_test, y_test = data
     y_pred= model.predict(x_test)
-    from keras import backend as K
-    import tensorflow as tf
+    
     print("y_pred shape:",y_pred.shape)
     top_values, top_indices = K.get_session().run(tf.nn.top_k(y_pred, k=5))
     print(top_indices.shape)
@@ -257,6 +257,31 @@ def test(model, data):
     print('Top 5 acc: ', top5/len(y),top5," out of ",len(y))
     print('Test acc:', np.sum(np.argmax(y_pred, 1) == np.argmax(y_test, 1))/y_test.shape[0])
 
+def submit(model,args,test_dir,size=[100,100]):
+    import scipy.misc
+    files = os.listdir(test_dir)
+    group_size = int(len(files) / args.groups)
+    with open("results.txt","w") as result_file:
+        for i in range(args.groups):
+            print("Running on group",i)
+            test_im = []
+            filenames = []
+            for j in range(group_size * i,min(len(files),group_size*(i+1))):
+                filepath = os.path.join(test_dir, files[j])
+                image = scipy.misc.imread(filepath)
+                image = scipy.misc.imresize(image, (size[0], size[1],3))
+                test_im.append(image)
+                filenames.append(files[j])
+            test_im = np.array(test_im)
+            test_im = test_im.reshape(-1, 100, 100, 3).astype('float32') / 255.
+            print("predicting on ",test_im.shape[0]," images")
+            y_pred = model.predict(test_im)
+            top_values, top_indices = K.get_session().run(tf.nn.top_k(y_pred, k=5,sorted=True))
+            print("writing to file")
+            for l in range(len(filenames)):
+                fn = filenames[l]
+                vals = " ".join(map(str,top_indices[l]))
+                result_file.write(fn + " "+vals+"\n")
 
 if __name__ == "__main__":
     
@@ -273,6 +298,7 @@ if __name__ == "__main__":
     parser.add_argument('--is_training', default=1, type=int)
     parser.add_argument('--weights', default=None)
     parser.add_argument('--lr', default=0.001, type=float)
+    parser.add_argument('--submit', default=0, type=int)
     
     args = parser.parse_args()
     print(args)
@@ -284,22 +310,28 @@ if __name__ == "__main__":
     val_data_list = '../../data/val.txt'
     images_root = '../../data/images/'
 
-    (x_test, y_test, x_train, y_train) = loadMiniplaces(train_data_list, val_data_list, images_root,num_train=100,num_val=10000,size=[100,100])
-    x_train = x_train.reshape(-1, 100, 100, 3).astype('float32') / 255.
-    x_test = x_test.reshape(-1, 100, 100, 3).astype('float32') / 255.
-    y_train = to_categorical(y_train.astype('float32'),num_classes=100)
-    y_test = to_categorical(y_test.astype('float32'),num_classes=100)
+    
 
     model = resnet32()
 
     # train or test
     if args.weights is not None:  # init the model weights with provided one
         model.load_weights(args.weights)
-    if args.is_training:
+    if args.is_training and not args.submit:
         # train(model=model, data=((x_train, y_train), (x_test, y_test)), args=args)
         model.summary()
         trainBatch(model=model,args=args)
+    if args.submit:
+            test_dir = "../../data/images/test"
+            print("submitting")
+            submit(model,args,test_dir,size=[100,100])
     else:  # as long as weights are given, will run testing
+        (x_test, y_test, x_train, y_train) = loadMiniplaces(train_data_list, val_data_list, images_root,num_train=100,num_val=100,size=[100,100])
+        x_train = x_train.reshape(-1, 100, 100, 3).astype('float32') / 255.
+        x_test = x_test.reshape(-1, 100, 100, 3).astype('float32') / 255.
+        y_train = to_categorical(y_train.astype('float32'),num_classes=100)
+        y_test = to_categorical(y_test.astype('float32'),num_classes=100)
+
         if args.weights is None:
             print('No weights are provided. Will test using random initialized weights.')
         else:
