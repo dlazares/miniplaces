@@ -12,7 +12,7 @@ from keras.utils import to_categorical
 from keras.preprocessing.image import ImageDataGenerator
 from keras import callbacks
 from keras.utils.vis_utils import plot_model
-from load_miniplaces import loadMiniplaces
+from load_miniplaces import loadMiniplaces,loadMiniplacesBatch
 
 
 def resnet():
@@ -195,6 +195,51 @@ def train(model, data, args):
 
     return model
 
+
+def trainBatch(model, args):
+    """
+    Training a CapsuleNet
+    :param model: the CapsuleNet model
+    :param data: a tuple containing training and testing data, like `((x_train, y_train), (x_test, y_test))`
+    :param args: arguments
+    :return: The trained model
+    """
+
+    # callbacks
+    log = callbacks.CSVLogger(args.save_dir + '/log.csv')
+    tb = callbacks.TensorBoard(log_dir=args.save_dir + '/tensorboard-logs',
+                               batch_size=args.batch_size, histogram_freq=args.debug)
+    checkpoint = callbacks.ModelCheckpoint(args.save_dir + '/weights-{epoch:02d}.h5',
+                                           save_best_only=True, save_weights_only=True, verbose=1)
+    lr_decay = callbacks.LearningRateScheduler(schedule=lambda epoch: args.lr * (0.9 ** epoch))
+
+    # compile the model
+    # model.compile(optimizer=optimizers.Adam(lr=args.lr),
+    #               loss=[margin_loss, 'mse'],
+    #               loss_weights=[1., args.lam_recon],
+    #               metrics={'out_caps': 'accuracy'})
+    sgd = SGD(lr=0.01, decay=1e-6, momentum=0.9, nesterov=True)
+    model.compile(loss='categorical_crossentropy', optimizer=sgd, metrics=['mae', 'acc','top_k_categorical_accuracy'])
+
+    groups = args.groups
+    for i in range(groups):
+        print("Training Group: ",i)
+        (x_test, y_test, x_train, y_train) = loadMiniplacesBatch(train_data_list, val_data_list, images_root,group=i,groups=groups,size=[100,100])
+        x_train = x_train.reshape(-1, 100, 100, 3).astype('float32') / 255.
+        x_test = x_test.reshape(-1, 100, 100, 3).astype('float32') / 255.
+        y_train = to_categorical(y_train.astype('float32'),num_classes=100)
+        y_test = to_categorical(y_test.astype('float32'),num_classes=100)
+        print(x_train.shape,y_train.shape,x_test.shape,y_test.shape)
+
+        # Training without data augmentation:
+        model.fit(x_train, y_train, batch_size=args.batch_size, epochs=args.epochs, callbacks=[log, tb, checkpoint, lr_decay],validation_data=(x_test,y_test))
+
+    model.save_weights(args.save_dir + '/trained_model.h5')
+    print('Trained model saved to \'%s/trained_model.h5\'' % args.save_dir)
+
+    return model
+
+
 def test(model, data):
     x_test, y_test = data
     y_pred= model.predict(x_test)
@@ -209,6 +254,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('--batch_size', default=100, type=int)
     parser.add_argument('--epochs', default=30, type=int)
+    parser.add_argument('--groups', default=1000, type=int)
     parser.add_argument('--lam_recon', default=0.392, type=float)  # 784 * 0.0005, paper uses sum of SE, here uses MSE
     parser.add_argument('--num_routing', default=3, type=int)  # num_routing should > 0
     parser.add_argument('--shift_fraction', default=0.1, type=float)
@@ -241,7 +287,8 @@ if __name__ == "__main__":
     if args.weights is not None:  # init the model weights with provided one
         model.load_weights(args.weights)
     if args.is_training:
-        train(model=model, data=((x_train, y_train), (x_test, y_test)), args=args)
+        # train(model=model, data=((x_train, y_train), (x_test, y_test)), args=args)
+        trainBatch(model=model,args=args)
     else:  # as long as weights are given, will run testing
         if args.weights is None:
             print('No weights are provided. Will test using random initialized weights.')

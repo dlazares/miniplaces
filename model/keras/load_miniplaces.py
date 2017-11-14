@@ -13,7 +13,7 @@ def loadMiniplaces(train_data_list, val_data_list, images_root, num_train=100, n
     with open(train_data_list, 'r') as f:
         for line in f:
             path, lab = line.rstrip().split(' ')
-            lab = int(lab) % 10
+            lab = int(lab)
             if lab not in train_im:
                 train_im[lab] = []
             train_im[lab].append(os.path.join(images_root, path))
@@ -22,7 +22,7 @@ def loadMiniplaces(train_data_list, val_data_list, images_root, num_train=100, n
     with open(val_data_list, 'r') as f:
         for line in f:
             path, lab = line.rstrip().split(' ')
-            lab = int(lab) % 10
+            lab = int(lab)
             if lab not in val_im:
                 val_im[lab] = []
             val_im[lab].append(os.path.join(images_root, path))
@@ -53,6 +53,49 @@ def loadMiniplaces(train_data_list, val_data_list, images_root, num_train=100, n
             Y_Test[j] = int(category) 
             j+=1
     return (X_Test, Y_Test, X_Train, Y_Train)
+
+def loadMiniplacesBatch(train_data_list, val_data_list, images_root, group=0,groups=10, size=[28, 28]):
+    train_im = []
+    with open(train_data_list, 'r') as f:
+        for line in f:
+            path, lab = line.rstrip().split(' ')
+            lab = int(lab) 
+            train_im.append((os.path.join(images_root, path),lab))
+
+    val_im = []
+    with open(train_data_list, 'r') as f:
+        for line in f:
+            path, lab = line.rstrip().split(' ')
+            lab = int(lab) 
+            val_im.append((os.path.join(images_root, path),lab))
+
+    train_group_size = int(len(train_im)/groups)
+    val_group_size = int(len(val_im)/groups)
+
+    x_train = []
+    y_train = []
+    for i in range(train_group_size*group, min(len(train_im),train_group_size*(group+1))):
+        image = scipy.misc.imread(train_im[i][0])
+        image = scipy.misc.imresize(image, (size[0], size[1],3))
+        x_train.append(image)
+        y_train.append(train_im[i][1])
+
+    x_test = []
+    y_test = []
+    for i in range(val_group_size*group, min(len(val_im),val_group_size*(group+1))):
+        image = scipy.misc.imread(val_im[i][0])
+        image = scipy.misc.imresize(image, (size[0], size[1],3))
+        x_test.append(image)
+        y_test.append(val_im[i][1])
+
+    x_train = np.array(x_train)
+    y_train = np.array(y_train)
+    x_test = np.array(x_test)
+    y_test = np.array(y_test)
+
+    return (x_test,y_test,x_train,y_train)
+
+
 
 #train_data_list = '../../../data/train.txt'
 #val_data_list = '../../../data/val.txt'
