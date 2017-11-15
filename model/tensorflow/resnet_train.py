@@ -6,7 +6,7 @@ from DataLoader import *
 import resnet_model
 
 # Dataset Parameters
-batch_size = 256
+batch_size = 64 
 load_size = 256
 fine_size = 224
 c = 3
@@ -17,9 +17,9 @@ learning_rate = 0.001
 dropout = 0.5 # Dropout, probability to keep units
 training_iters = 50000
 step_display = 50
-step_save = 10000
-path_save = 'alexnet_bn'
-start_from = ''
+step_save = 500
+path_save = './checkpoints/resnet'
+start_from = 'alexnet_bn-10000'
 
 def batch_norm_layer(x, train_phase, scope_bn):
     return batch_norm(x, decay=0.9, center=True, scale=True,
