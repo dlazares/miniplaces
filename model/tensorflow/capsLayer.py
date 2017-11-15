@@ -7,9 +7,6 @@ E-mail: naturomics.liao@gmail.com
 import numpy as np
 import tensorflow as tf
 
-from config import cfg
-
-
 epsilon = 1e-9
 
 
@@ -26,11 +23,12 @@ class CapsLayer(object):
     Returns:
         A 4-D tensor.
     '''
-    def __init__(self, num_outputs, vec_len, with_routing=True, layer_type='FC'):
+    def __init__(self, num_outputs, vec_len, batch_size, with_routing=True, layer_type='FC'):
         self.num_outputs = num_outputs
         self.vec_len = vec_len
         self.with_routing = with_routing
         self.layer_type = layer_type
+        self.batch_size = batch_size
 
     def __call__(self, input, kernel_size=None, stride=None):
         '''
@@ -43,7 +41,7 @@ class CapsLayer(object):
             if not self.with_routing:
                 # the PrimaryCaps layer, a convolutional layer
                 # input: [batch_size, 20, 20, 256]
-                assert input.get_shape() == [cfg.batch_size, 20, 20, 256]
+                assert input.get_shape() == [self.batch_size, 20, 20, 256]
 
                 '''
                 # version 1, computational expensive
@@ -54,9 +52,9 @@ class CapsLayer(object):
                         caps_i = tf.contrib.layers.conv2d(input, self.num_outputs,
                                                           self.kernel_size, self.stride,
                                                           padding="VALID", activation_fn=None)
-                        caps_i = tf.reshape(caps_i, shape=(cfg.batch_size, -1, 1, 1))
+                        caps_i = tf.reshape(caps_i, shape=(self.batch_size, -1, 1, 1))
                         capsules.append(caps_i)
-                assert capsules[0].get_shape() == [cfg.batch_size, 1152, 1, 1]
+                assert capsules[0].get_shape() == [self.batch_size, 1152, 1, 1]
                 capsules = tf.concat(capsules, axis=2)
                 '''
 
@@ -72,30 +70,30 @@ class CapsLayer(object):
                 # capsules = tf.contrib.layers.conv2d(input, self.num_outputs * self.vec_len,
                 #                                    self.kernel_size, self.stride,padding="VALID",
                 #                                    activation_fn=None)
-                capsules = tf.reshape(capsules, (cfg.batch_size, -1, self.vec_len, 1))
+                capsules = tf.reshape(capsules, (self.batch_size, -1, self.vec_len, 1))
 
                 # [batch_size, 1152, 8, 1]
                 capsules = squash(capsules)
-                assert capsules.get_shape() == [cfg.batch_size, 1152, 8, 1]
+                assert capsules.get_shape() == [self.batch_size, 1152, 8, 1]
                 return(capsules)
 
         if self.layer_type == 'FC':
             if self.with_routing:
                 # the DigitCaps layer, a fully connected layer
                 # Reshape the input into [batch_size, 1152, 1, 8, 1]
-                self.input = tf.reshape(input, shape=(cfg.batch_size, -1, 1, input.shape[-2].value, 1))
+                self.input = tf.reshape(input, shape=(self.batch_size, -1, 1, input.shape[-2].value, 1))
 
                 with tf.variable_scope('routing'):
                     # b_IJ: [batch_size, num_caps_l, num_caps_l_plus_1, 1, 1],
                     # about the reason of using 'batch_size', see issue #21
-                    b_IJ = tf.constant(np.zeros([cfg.batch_size, input.shape[1].value, self.num_outputs, 1, 1], dtype=np.float32))
-                    capsules = routing(self.input, b_IJ)
+                    b_IJ = tf.constant(np.zeros([self.batch_size, input.shape[1].value, self.num_outputs, 1, 1], dtype=np.float32))
+                    capsules = routing(self.input, b_IJ,self.batch_size)
                     capsules = tf.squeeze(capsules, axis=1)
 
             return(capsules)
 
 
-def routing(input, b_IJ):
+def routing(input, b_IJ,batch_size):
     ''' The routing algorithm.
     Args:
         input: A Tensor with [batch_size, num_caps_l=1152, 1, length(u_i)=8, 1]
@@ -108,9 +106,14 @@ def routing(input, b_IJ):
         v_j the vector output of capsule j in the layer l+1.
      '''
 
+    # Paramaters
+    stddev = .01
+    iter_routing = 3
+
     # W: [num_caps_j, num_caps_i, len_u_i, len_v_j]
     W = tf.get_variable('Weight', shape=(1, 1152, 10, 8, 16), dtype=tf.float32,
-                        initializer=tf.random_normal_initializer(stddev=cfg.stddev))
+                        initializer=tf.random_normal_initializer(stddev=stddev))
+    
 
     # Eq.2, calc u_hat
     # do tiling for input and W before matmul
@@ -118,22 +121,22 @@ def routing(input, b_IJ):
     # W => [batch_size, 1152, 10, 8, 16]
     input = tf.tile(input, [1, 1, 10, 1, 1])
     # tf.scan()
-    W = tf.tile(W, [cfg.batch_size, 1, 1, 1, 1])
-    assert input.get_shape() == [cfg.batch_size, 1152, 10, 8, 1]
+    W = tf.tile(W, [batch_size, 1, 1, 1, 1])
+    assert input.get_shape() == [batch_size, 1152, 10, 8, 1]
 
     # in last 2 dims:
     # [8, 16].T x [8, 1] => [16, 1] => [batch_size, 1152, 10, 16, 1]
     u_hat = tf.matmul(W, input, transpose_a=True)
-    assert u_hat.get_shape() == [cfg.batch_size, 1152, 10, 16, 1]
+    assert u_hat.get_shape() == [batch_size, 1152, 10, 16, 1]
 
     # line 3,for r iterations do
-    for r_iter in range(cfg.iter_routing):
+    for r_iter in range(iter_routing):
         with tf.variable_scope('iter_' + str(r_iter)):
             # line 4:
             # => [1, 1152, 10, 1, 1]
             c_IJ = tf.nn.softmax(b_IJ, dim=2)
-            # c_IJ = tf.tile(c_IJ, [cfg.batch_size, 1, 1, 1, 1])
-            assert c_IJ.get_shape() == [cfg.batch_size, 1152, 10, 1, 1]
+            # c_IJ = tf.tile(c_IJ, [self.batch_size, 1, 1, 1, 1])
+            assert c_IJ.get_shape() == [batch_size, 1152, 10, 1, 1]
 
             # line 5:
             # weighting u_hat with c_IJ, element-wise in the last two dims
@@ -141,12 +144,12 @@ def routing(input, b_IJ):
             s_J = tf.multiply(c_IJ, u_hat)
             # then sum in the second dim, resulting in [batch_size, 1, 10, 16, 1]
             s_J = tf.reduce_sum(s_J, axis=1, keep_dims=True)
-            assert s_J.get_shape() == [cfg.batch_size, 1, 10, 16, 1]
+            assert s_J.get_shape() == [batch_size, 1, 10, 16, 1]
 
             # line 6:
             # squash using Eq.1,
             v_J = squash(s_J)
-            assert v_J.get_shape() == [cfg.batch_size, 1, 10, 16, 1]
+            assert v_J.get_shape() == [batch_size, 1, 10, 16, 1]
 
             # line 7:
             # reshape & tile v_j from [batch_size ,1, 10, 16, 1] to [batch_size, 10, 1152, 16, 1]
@@ -154,8 +157,8 @@ def routing(input, b_IJ):
             # batch_size dim, resulting in [1, 1152, 10, 1, 1]
             v_J_tiled = tf.tile(v_J, [1, 1152, 1, 1, 1])
             u_produce_v = tf.matmul(u_hat, v_J_tiled, transpose_a=True)
-            assert u_produce_v.get_shape() == [cfg.batch_size, 1152, 10, 1, 1]
-            if r_iter < cfg.iter_routing - 1:
+            assert u_produce_v.get_shape() == [batch_size, 1152, 10, 1, 1]
+            if r_iter < iter_routing - 1:
                 # b_IJ += tf.reduce_sum(u_produce_v, axis=0, keep_dims=True)
                 b_IJ += u_produce_v
 
