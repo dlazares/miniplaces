@@ -59,6 +59,8 @@ num_classes = 100
 resnet = resnet_model.imagenet_resnet_v2(resnet_size, num_classes)
 logits = resnet(x,True)
 
+
+
 # Define loss and optimizer
 loss = tf.reduce_mean(tf.nn.sparse_softmax_cross_entropy_with_logits(labels=y, logits=logits))
 train_optimizer = tf.train.AdamOptimizer(learning_rate=learning_rate).minimize(loss)
