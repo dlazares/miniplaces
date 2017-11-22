@@ -20,7 +20,7 @@ training_iters = 50000
 step_display = 50
 step_save = 500
 path_save = './checkpoints/resnet_finetune'
-start_from = './checkpoints/resnet_finetunev2-4000'
+start_from = './checkpoints/resnet_affinev3-2000'
 test_dir = "../../data/images/test"
 groups=100
 
@@ -64,7 +64,7 @@ with tf.Session() as sess:
     
     files = os.listdir(test_dir)
     group_size = int(len(files) / groups)
-    with open("results.txt","w") as result_file:
+    with open("results_affine.txt","w") as result_file:
         for i in range(groups):
             print("Running on group",i)
             test_im = []

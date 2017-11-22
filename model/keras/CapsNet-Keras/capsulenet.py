@@ -5,21 +5,25 @@ Adopting to other backends should be easy, but I have not tested this.
 
 Usage:
        python CapsNet.py
-       python CapsNet.py --epochs 100
-       python CapsNet.py --epochs 100 --num_routing 3
+       python CapsNet.py --epochs 50
+       python CapsNet.py --epochs 50 --num_routing 3
        ... ...
        
 Result:
-    Validation accuracy > 99.5% after 20 epochs. Still under-fitting.
+    Validation accuracy > 99.5% after 20 epochs. Converge to 99.66% after 50 epochs.
     About 110 seconds per epoch on a single GTX1070 GPU card
     
 Author: Xifeng Guo, E-mail: `guoxifeng1990@163.com`, Github: `https://github.com/XifengGuo/CapsNet-Keras`
 """
 
+import numpy as np
 from keras import layers, models, optimizers
 from keras import backend as K
 from keras.utils import to_categorical
 from capsulelayers import CapsuleLayer, PrimaryCap, Length, Mask
+from DataLoader import *
+from keras.datasets import cifar100
+K.set_image_data_format('channels_last')
 
 
 
@@ -30,28 +34,41 @@ def CapsNet(input_shape, n_class, num_routing):
     :param input_shape: data shape, 3d, [width, height, channels]
     :param n_class: number of classes
     :param num_routing: number of routing iterations
-    :return: A Keras Model with 2 inputs and 2 outputs
+    :return: Two Keras Models, the first one used for training, and the second one for evaluation.
+            `eval_model` can also be used for training.
     """
     x = layers.Input(shape=input_shape)
 
     # Layer 1: Just a conventional Conv2D layer
     conv1 = layers.Conv2D(filters=256, kernel_size=9, strides=1, padding='valid', activation='relu', name='conv1')(x)
 
-    # Layer 2: Conv2D layer with `squash` activation, then reshape to [None, num_capsule, dim_vector]
-    primarycaps = PrimaryCap(conv1, dim_vector=8, n_channels=32, kernel_size=9, strides=2, padding='valid')
+    # Layer 2: Conv2D layer with `squash` activation, then reshape to [None, num_capsule, dim_capsule]
+    primarycaps = PrimaryCap(conv1, dim_capsule=8, n_channels=32, kernel_size=9, strides=2, padding='valid')
 
     # Layer 3: Capsule layer. Routing algorithm works here.
-    digitcaps = CapsuleLayer(num_capsule=n_class, dim_vector=16, num_routing=num_routing, name='digitcaps')(primarycaps)
+    digitcaps = CapsuleLayer(num_capsule=n_class, dim_capsule=16, num_routing=num_routing,
+                             name='digitcaps')(primarycaps)
 
     # Layer 4: This is an auxiliary layer to replace each capsule with its length. Just to match the true label's shape.
     # If using tensorflow, this will not be necessary. :)
-    out_caps = Length(name='out_caps')(digitcaps)
+    out_caps = Length(name='capsnet')(digitcaps)
 
     # Decoder network.
-    y = layers.Dense(n_class, activation='softmax')(out_caps)
-    
-    
-    return models.Model(inputs=x,outputs=y)
+    y = layers.Input(shape=(n_class,))
+    masked_by_y = Mask()([digitcaps, y])  # The true label is used to mask the output of capsule layer. For training
+    masked = Mask()(digitcaps)  # Mask using the capsule with maximal length. For prediction
+
+    # Shared Decoder model in training and prediction
+    decoder = models.Sequential(name='decoder')
+    decoder.add(layers.Dense(512, activation='relu', input_dim=16*n_class))
+    decoder.add(layers.Dense(1024, activation='relu'))
+    decoder.add(layers.Dense(np.prod(input_shape), activation='sigmoid'))
+    decoder.add(layers.Reshape(target_shape=input_shape, name='out_recon'))
+
+    # Models for training and evaluation (prediction)
+    train_model = models.Model([x, y], [out_caps, decoder(masked_by_y)])
+    eval_model = models.Model(x, [out_caps, decoder(masked)])
+    return train_model, eval_model
 
 
 def margin_loss(y_true, y_pred):
@@ -80,16 +97,17 @@ def train(model, data, args):
 
     # callbacks
     log = callbacks.CSVLogger(args.save_dir + '/log.csv')
-    tb = callbacks.TensorBoard(log_dir=args.save_dir + '/tensorboard-logs',
+    tb = callbacks.TensorBoard(log_dir=args.save_dir + '/tensorboard-logs/'+args.model_name,
                                batch_size=args.batch_size, histogram_freq=args.debug)
-    checkpoint = callbacks.ModelCheckpoint(args.save_dir + '/weights-{epoch:02d}.h5',
+    checkpoint = callbacks.ModelCheckpoint(args.save_dir + '/'+args.model_name+'-weights-{epoch:02d}.h5', monitor='val_capsnet_acc',
                                            save_best_only=True, save_weights_only=True, verbose=1)
     lr_decay = callbacks.LearningRateScheduler(schedule=lambda epoch: args.lr * (0.9 ** epoch))
 
     # compile the model
     model.compile(optimizer=optimizers.Adam(lr=args.lr),
-                  loss='categorical_crossentropy',
-                  metrics=['mae', 'acc','top_k_categorical_accuracy'])
+                  loss=[margin_loss, 'mse'],
+                  loss_weights=[1., args.lam_recon],
+                  metrics={'capsnet': 'accuracy'})
 
     """
     # Training without data augmentation:
@@ -104,18 +122,18 @@ def train(model, data, args):
         generator = train_datagen.flow(x, y, batch_size=batch_size)
         while 1:
             x_batch, y_batch = generator.next()
-            yield (x_batch, y_batch)
+            yield ([x_batch, y_batch], [y_batch, x_batch])
 
     # Training with data augmentation. If shift_fraction=0., also no augmentation.
     model.fit_generator(generator=train_generator(x_train, y_train, args.batch_size, args.shift_fraction),
                         steps_per_epoch=int(y_train.shape[0] / args.batch_size),
                         epochs=args.epochs,
-                        validation_data=[x_test, y_test],
+                        validation_data=[[x_test, y_test], [y_test, x_test]],
                         callbacks=[log, tb, checkpoint, lr_decay])
     # End: Training with data augmentation -----------------------------------------------------------------------#
 
-    model.save_weights(args.save_dir + '/trained_model.h5')
-    print('Trained model saved to \'%s/trained_model.h5\'' % args.save_dir)
+    model.save_weights(args.save_dir + '/trained_model_'+args.model_name+'.h5')
+    print('Trained model saved to \'%s/trained_model_'+args.model_name+'.h5\'' % args.save_dir)
 
     from utils import plot_log
     plot_log(args.save_dir + '/log.csv', show=True)
@@ -125,7 +143,7 @@ def train(model, data, args):
 
 def test(model, data):
     x_test, y_test = data
-    y_pred, x_recon = model.predict([x_test, y_test], batch_size=100)
+    y_pred, x_recon = model.predict(x_test, batch_size=100)
     print('-'*50)
     print('Test acc:', np.sum(np.argmax(y_pred, 1) == np.argmax(y_test, 1))/y_test.shape[0])
 
@@ -147,32 +165,56 @@ def load_mnist():
     # the data, shuffled and split between train and test sets
     from keras.datasets import mnist
     (x_train, y_train), (x_test, y_test) = mnist.load_data()
-    # print("MNIST",x_test[0])
+
     x_train = x_train.reshape(-1, 28, 28, 1).astype('float32') / 255.
     x_test = x_test.reshape(-1, 28, 28, 1).astype('float32') / 255.
     y_train = to_categorical(y_train.astype('float32'))
     y_test = to_categorical(y_test.astype('float32'))
     return (x_train, y_train), (x_test, y_test)
 
-def load_miniplaces_data():
-    from load_miniplaces import loadMiniplaces
-    train_data_list = '../../../data/train.txt'
-    val_data_list = '../../../data/val.txt'
-    images_root = '../../../data/images/'
-    (x_test, y_test, x_train, y_train) = loadMiniplaces(train_data_list, val_data_list, images_root,num_train=10000,num_val=5000)
-    # print("Miniplaces",X_Test[0])
-    print(x_train.shape)
-    print(x_train[0])
-    x_train = x_train.reshape(-1, 28, 28, 3).astype('float32') / 255.
-    x_test = x_test.reshape(-1, 28, 28, 3).astype('float32') / 255.
-    y_train = to_categorical(y_train.astype('float32'),num_classes=100)
-    y_test = to_categorical(y_test.astype('float32'),num_classes=100)
-    return (x_test, y_test,x_train, y_train)
-    
+
+# Miniplaces Data
+batch_size = 64 
+load_size = 256
+fine_size = 32 
+data_mean = np.asarray([0.45834960097,0.44674252445,0.41352266842])
+# Construct dataloader
+opt_data_train = {
+    #'data_h5': 'miniplaces_256_train.h5',
+    'data_root': '../../../data/images/',   # MODIFY PATH ACCORDINGLY
+    'data_list': '../../../data/train.txt', # MODIFY PATH ACCORDINGLY
+    'load_size': load_size,
+    'fine_size': fine_size,
+    'data_mean': data_mean,
+    'randomize': True
+    }
+opt_data_val = {
+    #'data_h5': 'miniplaces_256_val.h5',
+    'data_root': '../../../data/images/',   # MODIFY PATH ACCORDINGLY
+    'data_list': '../../../data/val.txt',   # MODIFY PATH ACCORDINGLY
+    'load_size': load_size,
+    'fine_size': fine_size,
+    'data_mean': data_mean,
+    'randomize': False
+    }
+
+loader_train = DataLoaderDisk(**opt_data_train)
+loader_val = DataLoaderDisk(**opt_data_val)
+
+def load_miniplaces_batch():
+    x_train, y_train = loader_train.next_batch(10000)
+    x_test,y_test = loader_val.next_batch(10000)
+    print("\n OG shapes:",x_train.shape,y_train.shape,x_test.shape,y_test.shape,len(y_test),y_test[0])
+    y_train = to_categorical(y_train.astype('float32'),100)
+    y_test = to_categorical(y_test.astype('float32'),100)
+    print(len(y_test[0]))
+    return (x_train,y_train), (x_test,y_test)
+
+
+
 
 
 if __name__ == "__main__":
-    import numpy as np
     import os
     from keras.preprocessing.image import ImageDataGenerator
     from keras import callbacks
@@ -182,12 +224,13 @@ if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser()
     parser.add_argument('--batch_size', default=100, type=int)
-    parser.add_argument('--epochs', default=30, type=int)
+    parser.add_argument('--epochs', default=50, type=int)
     parser.add_argument('--lam_recon', default=0.392, type=float)  # 784 * 0.0005, paper uses sum of SE, here uses MSE
     parser.add_argument('--num_routing', default=3, type=int)  # num_routing should > 0
     parser.add_argument('--shift_fraction', default=0.1, type=float)
     parser.add_argument('--debug', default=0, type=int)  # debug>0 will save weights by TensorBoard
     parser.add_argument('--save_dir', default='./result')
+    parser.add_argument('--model_name', default='mnist')
     parser.add_argument('--is_training', default=1, type=int)
     parser.add_argument('--weights', default=None)
     parser.add_argument('--lr', default=0.001, type=float)
@@ -197,18 +240,23 @@ if __name__ == "__main__":
         os.makedirs(args.save_dir)
 
     # load data
-    # (x_train, y_train), (x_test, y_test) = load_mnist()
-    # print("Shape:",x_train.shape,y_train.shape,x_test.shape,y_test.shape)
+#    (x_train, y_train), (x_test, y_test) = load_mnist()
+#    print("\n mnist",y_train[0],x_train[0])
+#    (x_train, y_train), (x_test, y_test) = cifar100.load_data(label_mode='fine')
+#    x_train = x_train.astype('float32')/255.
+#    x_test = x_test.astype('float32')/255.
+#    y_train = to_categorical(y_train.astype('float32'))
+#    y_test = to_categorical(y_test.astype('float32'))
+#    print("\n cifar",y_train[0],x_train[0])
+    (x_train, y_train), (x_test, y_test) = load_miniplaces_batch()
+#    print("mini",y_train[0],x_train[0])
+#    print("\n shapes:",x_train.shape,y_train.shape,x_test.shape,y_test.shape)
+#    print("n_class:",len(np.unique(np.argmax(y_train, 1))))
 
-    x_test,y_test,x_train,y_train = load_miniplaces_data()
-    print("Shape:",x_train.shape,y_train.shape,x_test.shape,y_test.shape)
     # define model
-    # model = CapsNet(input_shape=[28, 28, 1],
-    #                 n_class=len(np.unique(np.argmax(y_train, 1))),
-    #                 num_routing=args.num_routing)
-    model = CapsNet(input_shape=[28, 28, 3],
-                    n_class=100,
-                    num_routing=args.num_routing)
+    model, eval_model = CapsNet(input_shape=x_train.shape[1:],
+                                n_class=len(np.unique(np.argmax(y_train, 1))),
+                                num_routing=args.num_routing)
     model.summary()
     # plot_model(model, to_file=args.save_dir+'/model.png', show_shapes=True)
 
@@ -220,4 +268,4 @@ if __name__ == "__main__":
     else:  # as long as weights are given, will run testing
         if args.weights is None:
             print('No weights are provided. Will test using random initialized weights.')
-        test(model=model, data=(x_test, y_test))
+        test(model=eval_model, data=(x_test, y_test))
